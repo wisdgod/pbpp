@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package pbpp.test.options;
+
+option (pbpp.test.file_opt) = "plain";
+option (pbpp.test.file_opt_num) = -42;
+option (pbpp.test.file_opt_float) = 1.5e-3;
+option (.pbpp.test.rooted_opt).sub_field = true;
+
+option (pbpp.test.aggregate_opt) = {
+  name: "example"
+  count: 3
+  ratio: 0.5
+  enabled: true
+  mode: MODE_FAST
+  // comment inside an aggregate
+  tags: ["a", "b", "c"]
+  numbers: [1, 2, 3]
+  empty_list: []
+  nested {
+    key: "k"
+    value: 1
+  }
+  angle_nested {
+    inner: -1
+  }
+  [pbpp.test.ext_field]: "ext"
+  [type.googleapis.com/pbpp.test.AnyType] {
+    payload: "any"
+  }
+  long_text:
+    "part one "
+    "part two"
+};
+
+message WithFieldOptions {
+  int32 plain = 1 [deprecated = true];
+  string custom = 2 [(pbpp.test.field_opt) = "v", (pbpp.test.field_opt_num) = 7];
+  bytes aggregate = 3 [(pbpp.test.field_agg) = { key: "k", nested { n: 1 }, list: [1, 2] }];
+  double signed = 4 [(pbpp.test.bounds) = -0.5];
+}
+
+enum WithValueOptions {
+  WVO_UNSPECIFIED = 0;
+  WVO_A = 1 [deprecated = true, (pbpp.test.value_opt) = { weight: 10 }];
+}

@@ -1,0 +1,45 @@
+// Header block line one.
+// Header block line two.
+
+// Leading comment attached to syntax.
+syntax = "proto3";
+
+package pbpp.test.comments;
+
+/* Block comment leading the message. */
+message Torture {
+  // Leading comment on a.
+  int32 a = 1;
+  int32 b = 2; // trailing on b
+
+  // After a blank line: leading comment on c.
+  int32 c = 3;
+
+  // This block is followed by a blank line, so it is detached:
+  // it belongs to c's neighborhood, not to d.
+
+  int32 d = 4;
+  /* inline block */ int32 e = 5;
+
+  // Dangling comment at the end of the message body.
+}
+
+message IntroCase {
+  // This comment is separated from the first field by a blank line,
+  // so it introduces the scope rather than leading the field.
+
+  int32 first = 1;
+}
+
+// Leading the enum.
+enum Level {
+  LEVEL_UNSPECIFIED = 0; // zero value
+  // between values
+  LEVEL_LOW = 1;
+
+  LEVEL_HIGH = 2;
+}
+
+message Empty {}
+
+// Dangling comment at the very end of the file.

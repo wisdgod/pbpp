@@ -1,0 +1,8 @@
+[package]
+name = "buildrs-consumer"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[build-dependencies]
+pbpp = { path = "../.." }

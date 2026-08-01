@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package acme.v1;
+
+import "acme/v1/types.proto";
+
+message Api {
+  Item item = 1;
+}
+
+message Gone {
+  int32 x = 1;
+}

@@ -1,0 +1,66 @@
+name: Bug report
+description: Wrong output, a rejected valid file, an accepted invalid one, or a crash.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        pbpp is strict on purpose: input outside the proto3 grammar is
+        meant to be a located error. If a diagnostic looks wrong, that is
+        still a bug — include it below.
+
+  - type: input
+    id: version
+    attributes:
+      label: pbpp version
+      placeholder: "0.1.0 (or a git revision)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which part
+      options:
+        - parse / CST
+        - format
+        - select (rules)
+        - prune
+        - pbpp::fs / pbtrim CLI
+        - build.rs or GitHub Action usage
+        - not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: input
+    attributes:
+      label: Minimal input
+      description: >-
+        The smallest `.proto` (plus rules file, if selection is involved)
+        that shows the problem.
+      render: protobuf
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Command and output
+      description: What you ran, and what it printed.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      placeholder: "e.g. Linux x86_64, macOS arm64, Windows"

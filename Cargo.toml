@@ -1,0 +1,39 @@
+[package]
+name = "pbpp"
+version = "0.1.0"
+edition = "2024"
+# Floor set by let-chains (stable since 1.88); everything else used
+# (cast_signed 1.87, #[expect] 1.81, is_none_or 1.82) is older.
+rust-version = "1.88"
+description = "protobuf preprocessor: selection-driven trimming and formatting of proto3 files (.proto in, .proto out)"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/wisdgod/pbpp"
+keywords = ["protobuf", "proto3", "formatter", "preprocessor", "codegen"]
+categories = ["development-tools::build-utils", "parser-implementations", "command-line-utilities"]
+# Allow-list rather than exclude-list: the archive carries the crate and
+# what a consumer reads, nothing else. Repository-only material (CI
+# workflows, action.yml, deny.toml, contributor/release/security docs,
+# tests, examples, the build-script fixture, vendored third-party corpus)
+# stays in git. Cargo adds Cargo.toml and Cargo.lock on its own.
+include = [
+    "/src",
+    "/README.md",
+    "/CHANGELOG.md",
+    "/LICENSE-MIT",
+    "/LICENSE-APACHE",
+]
+
+[[bin]]
+name = "pbtrim"
+path = "src/bin/pbtrim.rs"
+
+[dependencies]
+rustc-hash = "2"
+
+# Lint policy: pedantic/nursery opinions are part of the review loop.
+# Intentional deviations carry `#[expect(..., reason = "...")]` at the site,
+# so a lint that stops firing is itself a signal.
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
