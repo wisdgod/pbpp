@@ -1,0 +1,5 @@
+# pbtrim emits LF-only output, so a CRLF checkout (git autocrlf=true on
+# Windows runners) makes `pbtrim fmt --check` flag every .proto file.
+# Pin .proto to LF on every platform; normalize everything else.
+* text=auto
+*.proto text eol=lf
