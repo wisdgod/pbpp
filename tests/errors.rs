@@ -74,12 +74,30 @@ fn proto2_group() {
     );
 }
 
+// Not lumped with the proto2 tests: proto3 permits `extend` for custom
+// options. pbpp rejects it as unsupported (tracked for 0.2.0), and the
+// diagnostic must say so rather than mislabel it a proto2 construct.
 #[test]
-fn proto2_extend() {
-    assert_err_contains(
+fn extend_unsupported_top_level() {
+    let d = assert_err_contains(
         "syntax = \"proto3\";\nextend google.protobuf.FieldOptions {}\n",
         "`extend`",
     );
+    assert!(
+        !d.message().contains("proto2"),
+        "proto3 permits `extend` for custom options; the diagnostic must \
+         not call it a proto2 construct: {}",
+        d.message()
+    );
+}
+
+#[test]
+fn extend_unsupported_in_message() {
+    let d = assert_err_contains(
+        "syntax = \"proto3\";\nmessage M {\n  extend google.protobuf.FieldOptions {}\n}\n",
+        "`extend`",
+    );
+    assert!(!d.message().contains("proto2"));
 }
 
 #[test]

@@ -1,10 +1,14 @@
 //! Recursive-descent parser producing the lossless CST.
 //!
 //! Strictness rules (from the design):
-//! - full proto3 grammar coverage, including the complete option grammar
+//! - strict proto3 grammar, including the complete option grammar
 //!   (custom option paths, aggregate literals); anything outside the grammar
-//!   is a parse error — there is no "skip unknown construct" recovery;
-//! - proto2 constructs (`required`, `group`, `extensions`, `extend`,
+//!   is a parse error — there is no "skip unknown construct" recovery.
+//!   Known gaps against the spec, tracked for 0.2.0: `extend` (legal in
+//!   proto3 for custom options only) is rejected, and adjacent
+//!   string-literal concatenation is accepted in option values but not in
+//!   `syntax`/`import`/`reserved` positions;
+//! - proto2-only constructs (`required`, `group`, `extensions`,
 //!   `syntax = "proto2"`) produce explicit, targeted diagnostics;
 //! - comment attachment is decided here, once, per the rules in the design
 //!   (same-line trailing / contiguous leading / blank-separated detached).
@@ -24,10 +28,12 @@ use crate::span::Span;
 ///
 /// # Errors
 ///
-/// Anything outside the proto3 grammar is an error with a source location:
-/// lexical errors, grammar violations, proto2 constructs (`required`,
-/// `group`, `extend`, `extensions`, `syntax = "proto2"`), a missing or
-/// misplaced `syntax` statement, and out-of-range numeric literals.
+/// Anything outside the supported proto3 grammar is an error with a source
+/// location: lexical errors, grammar violations, proto2 constructs
+/// (`required`, `group`, `extensions`, `syntax = "proto2"`), `extend`
+/// blocks (proto3 permits them for custom options; pbpp does not support
+/// them yet), a missing or misplaced `syntax` statement, and out-of-range
+/// numeric literals.
 pub fn parse(src: &str) -> Result<File<'_>, Error> {
     // Spans and arena indices are u32: reject pathological inputs once,
     // here at the boundary, so every later `as u32` is provably lossless.
@@ -420,7 +426,8 @@ impl<'a> Parser<'a> {
             Kw::Enum => p.enum_def(blank, leading).map(Item::Enum),
             Kw::Service => p.service(blank, leading).map(Item::Service),
             Kw::Extend => Err(p.error(
-                "proto2 construct `extend` is not supported (pbpp is proto3-only)",
+                "`extend` is not supported yet (proto3 permits `extend` only for \
+                 custom options; pbpp currently rejects all `extend` blocks)",
                 t.span,
             )),
             Kw::Extensions => Err(p.error(
@@ -678,11 +685,13 @@ impl<'a> Parser<'a> {
             (TokKind::Ident, Kw::Reserved) => {
                 p.reserved(blank, leading, false).map(MsgItem::Reserved)
             }
-            (TokKind::Ident, Kw::Extensions | Kw::Extend) => Err(p.error(
-                format!(
-                    "proto2 construct `{}` is not supported (pbpp is proto3-only)",
-                    p.text(t)
-                ),
+            (TokKind::Ident, Kw::Extend) => Err(p.error(
+                "`extend` is not supported yet (proto3 permits `extend` only for \
+                 custom options; pbpp currently rejects all `extend` blocks)",
+                t.span,
+            )),
+            (TokKind::Ident, Kw::Extensions) => Err(p.error(
+                "proto2 construct `extensions` is not supported (pbpp is proto3-only)",
                 t.span,
             )),
             (TokKind::Ident, Kw::Group) => Err(p.error(

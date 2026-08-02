@@ -195,9 +195,18 @@ source).
   parse-time attachment. Pruned output is the input minus deleted spans —
   options, comments, unknown-to-selection constructs survive because
   they are never rebuilt.
-- **Strict proto3 coverage**: the full grammar including custom option
-  paths and aggregate (text-format) literals; proto2 constructs
-  (`required`/`group`/`extend`/`extensions`) produce targeted errors.
+- **Strict proto3 grammar**: custom option paths and aggregate
+  (text-format) literals included; proto2-only constructs
+  (`required`/`group`/`extensions`) produce targeted errors. Known
+  gaps, tracked for 0.2.0: `extend` blocks are rejected even though
+  proto3 permits them for custom options, and adjacent string-literal
+  concatenation is accepted in option values but not yet in
+  `syntax`/`import`/`reserved` positions.
+- **A preprocessor, not a checker**: pbpp validates what trimming
+  correctness needs (resolvable references, import hygiene, enum
+  legality). protoc-level checks it does not duplicate — duplicate
+  field numbers, fields using `reserved` numbers or names — remain
+  protoc's job; passing pbpp does not imply passing protoc.
 - **Formatter properties locked by tests**: idempotence, semantic
   preservation (checked against an independently implemented canonical
   digest), stable comment attachment; definition order is never changed.
@@ -216,12 +225,20 @@ stable). The filesystem boundary (`pbpp::fs`) is written to be
 cross-platform, but note that atomic replacement and case-sensitivity are
 filesystem-dependent; report any platform-specific surprises.
 
+## MSRV
+
+The minimum supported Rust version is **1.88**, declared as
+`rust-version` in `Cargo.toml` and enforced by CI on all three
+platforms (the floor is set by let-chains, stabilized in 1.88).
+Policy: an MSRV bump is a deliberate change — called out in the
+changelog and shipped only in a minor (`0.x`) release, never in a
+patch.
+
 ## Building and testing
 
-The only third-party dependency is `rustc-hash`. MSRV is 1.88. The
-published crate carries just the library, binary, and docs; tests,
-examples, and CI live in the
-[repository](https://github.com/wisdgod/pbpp):
+The only third-party dependency is `rustc-hash`. The published crate
+carries just the library, binary, and docs; tests, examples, and CI
+live in the [repository](https://github.com/wisdgod/pbpp):
 
 ```sh
 cargo build --release
