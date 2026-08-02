@@ -115,9 +115,13 @@ line/column, and a caret.
 - run: git ls-files -z '*.proto' | xargs -0 --no-run-if-empty pbtrim fmt --check
 
 # Keep pruned artifacts in sync with the rules (manifest sync is
-# idempotent, so drift shows up as a plain git diff)
+# idempotent, so drift shows up as a diff). Stage before diffing:
+# `git diff` alone cannot see newly created files — they are
+# untracked, and a rules change that adds a file would pass silently.
 - run: pbtrim prune --rules trim.rules --root proto/ --out gen/proto/
-- run: git diff --exit-code gen/proto/
+- run: |
+    git add -A -- gen/proto/
+    git diff --cached --exit-code -- gen/proto/
 ```
 
 The repository also ships a composite action (`action.yml`), so you can

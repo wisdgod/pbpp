@@ -84,6 +84,14 @@ runs:
               fi
             done <<< "$PBPP_PATHS"
           else
+            # A failing `git ls-files` inside the process substitution is
+            # invisible to `set -e`: without a checkout the loop would read
+            # zero files and the step would pass green having checked
+            # nothing. Probe git explicitly first.
+            if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+              echo "::error::workspace is not a git repository; run actions/checkout before this action, or pass explicit 'paths'"
+              exit 2
+            fi
             while IFS= read -r -d '' f; do
               protos+=("$f")
             done < <(git ls-files -z -- '*.proto')
@@ -94,7 +102,7 @@ runs:
           fmt-check | fmt)
             collect_protos
             if [ "${#protos[@]}" -eq 0 ]; then
-              echo "no tracked .proto files; nothing to do"
+              echo "::notice::no tracked .proto files; nothing to do"
               exit 0
             fi
             # `--` so a file named like a flag is still treated as a file.
