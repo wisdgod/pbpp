@@ -130,11 +130,11 @@ skip the manual install (a Rust toolchain must already be on the runner):
 ```yaml
 - uses: dtolnay/rust-toolchain@stable
 # Formatting gate over every tracked .proto:
-- uses: wisdgod/pbpp@v0.1.0
+- uses: wisdgod/pbpp@v0.1.1
   with:
     command: fmt-check
 # Or prune into a directory:
-- uses: wisdgod/pbpp@v0.1.0
+- uses: wisdgod/pbpp@v0.1.1
   with:
     command: prune
     rules: trim.rules

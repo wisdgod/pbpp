@@ -7,8 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-05
+
 ### Fixed
 
+- Type-reference resolution now follows protoc's first-segment
+  anchoring rule (`descriptor.cc`, `LookupSymbolNoPlaceholder`) instead
+  of retrying the whole path one scope further out. The old walk let
+  `Bar.Baz`, written inside a message whose `Bar` has no `Baz`, fall
+  through to an outer `Bar.Baz` — input protoc rejects ("the innermost
+  scope is searched first"). Resolution now matches protoc case for
+  case: the nearest scope where the first segment names a package or
+  definition decides the whole lookup, and an anchored miss is an error
+  whose note names the path it resolved to and the leading-dot escape
+  hatch; a first segment naming a field, enum value, or method is
+  passed over; a single-segment field type skips past non-type symbols
+  (a field named like a message no longer hides that message, which
+  pbpp used to reject where protoc accepts); and rpc signatures resolve
+  from the service scope taking the nearest symbol of any kind, so
+  `rpc M(M) returns (M);` — a sibling rpc name shadowing the message —
+  is now the same kind error protoc gives instead of silently
+  resolving.
 - Composite action: running without a checkout no longer passes
   silently. Default `.proto` discovery ran `git ls-files` inside a
   process substitution, whose failure `set -e` cannot see — with no
