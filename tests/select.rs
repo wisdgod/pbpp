@@ -506,6 +506,155 @@ message Holder {
 }
 
 #[test]
+fn first_segment_anchoring_rejects_shadowed_outer_path() {
+    // protoc's rule (descriptor.cc, LookupSymbolNoPlaceholder): the first
+    // path segment anchors at the innermost scope defining it. It does
+    // not fall through to the outer `Bar.Baz` when the inner `Bar` lacks
+    // a `Baz` — protoc reports `"Bar.Baz" is resolved to
+    // "pkg.Foo.Bar.Baz", which is not defined`.
+    let src = r#"
+syntax = "proto3";
+package pkg;
+
+message Bar { message Baz { int32 x = 1; } }
+
+message Foo {
+  message Bar { int32 y = 1; }
+  Bar.Baz baz = 1;
+}
+"#;
+    let set = FileSet::parse(vec![("pkg.proto".to_string(), src)]).unwrap();
+    let err = analyze(&set).unwrap_err();
+    assert!(
+        err.message().contains("cannot resolve type `Bar.Baz`"),
+        "{}",
+        err.message()
+    );
+    // The note names the anchored path and the leading-dot escape hatch.
+    let notes: Vec<&str> = err.notes().iter().map(|n| n.message.as_str()).collect();
+    assert!(
+        notes
+            .iter()
+            .any(|n| n.contains("`Bar.Baz` resolves to `pkg.Foo.Bar.Baz`")),
+        "{notes:?}"
+    );
+    assert!(notes.iter().any(|n| n.contains("`.Bar.Baz`")), "{notes:?}");
+
+    // The absolute form reaches the outer definition.
+    let abs = src.replace("Bar.Baz baz", ".pkg.Bar.Baz baz");
+    let (sema, sel) = run(&[("pkg.proto", abs.as_str())], "+ pkg.Foo\n").unwrap();
+    assert_eq!(mark(&sema, &sel, "pkg.Bar.Baz"), Mark::Required);
+}
+
+#[test]
+fn non_aggregate_first_segment_is_passed_over() {
+    // A first segment naming a field is no anchor: protoc skips the scope
+    // and keeps walking outward (only packages and definitions anchor).
+    let src = r#"
+syntax = "proto3";
+package pkg;
+
+message A { message B { int32 x = 1; } }
+
+message M {
+  string A = 1;
+  A.B f = 2;
+}
+"#;
+    let (sema, sel) = run(&[("pkg.proto", src)], "+ pkg.M\n").unwrap();
+    assert_eq!(mark(&sema, &sel, "pkg.A.B"), Mark::Required);
+}
+
+#[test]
+fn single_segment_field_type_skips_non_types() {
+    // protoc's LOOKUP_TYPES: a single-segment field type passes over
+    // fields, enum values, and services sharing the name and takes the
+    // nearest message or enum.
+    let src = r#"
+syntax = "proto3";
+package pkg;
+
+message Foo { int32 n = 1; }
+
+message M {
+  string Foo = 1;
+  Foo f = 2;
+}
+"#;
+    let (sema, sel) = run(&[("pkg.proto", src)], "+ pkg.M\n").unwrap();
+    assert_eq!(mark(&sema, &sel, "pkg.Foo"), Mark::Required);
+
+    // Likewise past a *service* named like the type, out to an imported
+    // root-level message.
+    let root = "syntax = \"proto3\";\nmessage Foo { int32 z = 1; }\n";
+    let svc = r#"
+syntax = "proto3";
+package pkg;
+import "root.proto";
+
+service Foo {}
+message M { Foo f = 1; }
+"#;
+    let (sema, sel) = run(&[("root.proto", root), ("pkg.proto", svc)], "+ pkg.M\n").unwrap();
+    assert_eq!(mark(&sema, &sel, "Foo"), Mark::Required);
+}
+
+#[test]
+fn rpc_signatures_resolve_through_the_service_scope() {
+    // protoc resolves rpc input/output relative to the method (LOOKUP_ALL
+    // starting at the service scope): a sibling rpc named like the
+    // message wins the lookup and fails the kind check — protoc's
+    // `"M" is not a message type`.
+    let src = r#"
+syntax = "proto3";
+package pkg;
+
+message M { int32 a = 1; }
+
+service S {
+  rpc M(M) returns (M);
+}
+"#;
+    let err = run(&[("pkg.proto", src)], "+ **\n").unwrap_err();
+    assert!(err.contains("`pkg.S.M` is a method"), "{err}");
+    assert!(
+        err.contains("rpc input and output must be message types"),
+        "{err}"
+    );
+}
+
+#[test]
+fn rpc_signature_stops_at_a_package_named_like_the_type() {
+    // LOOKUP_ALL takes the nearest symbol of any kind: a sub-package
+    // named `foo` stops the walk (protoc: `"foo" is not a message
+    // type`), even though a message `foo` is importable at the root.
+    let leaf = "syntax = \"proto3\";\npackage pkg.foo;\nmessage Inner { int32 a = 1; }\n";
+    let root = "syntax = \"proto3\";\nmessage foo { int32 z = 1; }\n";
+    let src = r#"
+syntax = "proto3";
+package pkg;
+import "leaf.proto";
+import "root.proto";
+
+message Q { int32 q = 1; }
+
+service S {
+  rpc R(foo) returns (Q);
+}
+"#;
+    let err = run(
+        &[
+            ("leaf.proto", leaf),
+            ("root.proto", root),
+            ("pkg.proto", src),
+        ],
+        "+ **\n",
+    )
+    .unwrap_err();
+    assert!(err.contains("cannot resolve type `foo`"), "{err}");
+}
+
+#[test]
 fn wkt_resolution_and_cascade() {
     let src = r#"
 syntax = "proto3";

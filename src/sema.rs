@@ -9,9 +9,13 @@
 //!   directly, or through an `import public` chain);
 //! - the same fully-qualified path defined twice is an error.
 //!
-//! Resolution follows `prep_core`'s approach: a namespace tree keyed by
-//! `(parent node, segment)` with nearest-enclosing-scope lookup walking
-//! outward, and `.`-prefixed paths absolute. Symbol paths live in one
+//! Resolution is protoc-faithful (`descriptor.cc`,
+//! `LookupSymbolNoPlaceholder`): a namespace tree keyed by
+//! `(parent node, segment)`, `.`-prefixed paths absolute, and relative
+//! paths anchored on their first segment — the nearest enclosing scope
+//! where that segment names a package or definition decides the rest of
+//! the lookup (`Builder::resolve_path` has the full rule). Symbol paths
+//! live in one
 //! shared segment arena (`extend_from_within` from the parent's range), so
 //! building and resolving symbols allocates no per-symbol strings.
 
@@ -726,16 +730,17 @@ impl<'s, 'a> Builder<'s, 'a> {
         self.sema.children_off = off;
     }
 
-    /// Resolution scope of a pending reference: for a field, the enclosing
-    /// message; for a method, the package (a service is not a namespace for
-    /// types).
+    /// Resolution scope of a pending reference: the owner's enclosing
+    /// definition — the message for a field, the *service* for a method.
+    /// protoc probes the service scope too (`relative_to` is the method's
+    /// full name), so a sibling rpc's name shadows a message name in
+    /// signatures; `rpc M(M) returns (M)` is protoc's "\"M\" is not a
+    /// message type" error, not a lookup that skips past the service.
     fn start_ns(&self, p: &PendingRef<'s>) -> NsId {
         let owner = self.sema.sym(p.owner);
-        let parent = self.sema.sym(owner.parent.expect("ref owner has a parent"));
-        match owner.kind {
-            SymKind::Method => self.sema.ns_nodes[parent.ns.index()].parent,
-            _ => parent.ns,
-        }
+        self.sema
+            .sym(owner.parent.expect("ref owner has a parent"))
+            .ns
     }
 
     /// Checks that every import names an input file or a well-known file,
@@ -947,27 +952,80 @@ impl<'s, 'a> Builder<'s, 'a> {
         Ok(target)
     }
 
-    /// Nearest-enclosing-scope lookup; `.`-prefixed paths are absolute.
-    /// Allocation-free: descends the namespace tree per scope level.
+    /// Reference resolution, protoc-faithful (`descriptor.cc`,
+    /// `LookupSymbolNoPlaceholder`); allocation-free until an error.
+    ///
+    /// `.`-prefixed paths resolve from the root. A relative path anchors
+    /// on its *first* segment: walking outward from the innermost scope,
+    /// the first scope where that segment names a package or definition
+    /// decides the whole lookup — if the remaining segments don't resolve
+    /// inside it, the reference is unresolved (an inner `A` without `A.B`
+    /// shadows an outer `A.B`; protoc: "the innermost scope is searched
+    /// first"), never a cue to keep walking outward. Scopes where the
+    /// first segment names a field, enum value, or method are passed
+    /// over, and so is a single-segment match on anything but a message
+    /// or enum when a field type is wanted (protoc's `LOOKUP_TYPES`);
+    /// rpc signatures (`LOOKUP_ALL`) take the nearest symbol of any kind
+    /// and leave the rejection to the kind check.
     fn resolve_path(&self, p: &PendingRef<'s>) -> Result<SymId, Error> {
         let segs = p.path.segs.slice(&self.set.files[p.file.index()].cst.segs);
         if p.path.leading_dot {
-            if let Some(id) = self.sema.descend_syms(NS_ROOT, segs) {
-                return Ok(id);
-            }
-        } else {
-            // Try the innermost scope first, then walk outward to the root.
-            let mut base = self.start_ns(p);
-            loop {
-                if let Some(id) = self.sema.descend_syms(base, segs) {
-                    return Ok(id);
-                }
-                if base == NS_ROOT {
-                    break;
-                }
-                base = self.sema.ns_nodes[base.index()].parent;
-            }
+            return self
+                .sema
+                .descend_syms(NS_ROOT, segs)
+                .ok_or_else(|| self.unresolved(p, segs, None));
         }
+        let (first, rest) = segs.split_first().expect("the grammar has no empty paths");
+        let mut base = self.start_ns(p);
+        loop {
+            if let Some(ns) = self.sema.ns_child(base, first.text) {
+                let sym = self.sema.ns_nodes[ns.index()].sym;
+                if !rest.is_empty() {
+                    // Compound path: a first segment naming a package
+                    // prefix or a definition anchors the lookup (protoc:
+                    // `IsAggregate`); the rest must resolve inside it and
+                    // a miss is final. Anything else (field, enum value,
+                    // method) is passed over.
+                    if sym.is_none_or(|id| self.sema.sym(id).kind.is_def()) {
+                        return self
+                            .sema
+                            .descend_syms(ns, rest)
+                            .ok_or_else(|| self.unresolved(p, segs, Some(ns)));
+                    }
+                } else if let Some(id) = sym {
+                    if p.message_only
+                        || matches!(self.sema.sym(id).kind, SymKind::Message | SymKind::Enum)
+                    {
+                        return Ok(id);
+                    }
+                    // A field type over a non-type name: keep walking.
+                } else if p.message_only {
+                    // A bare package name: protoc (`LOOKUP_ALL`) takes
+                    // the package symbol here and fails the message-type
+                    // check; pbpp has no symbol for a package, so the
+                    // same hard stop reports as unresolved.
+                    return Err(self.unresolved(p, segs, None));
+                }
+                // A bare package name as a field type: keep walking
+                // (protoc: a package is not a type).
+            }
+            if base == NS_ROOT {
+                return Err(self.unresolved(p, segs, None));
+            }
+            base = self.sema.ns_nodes[base.index()].parent;
+        }
+    }
+
+    /// The unresolved-reference error. When the first segment anchored
+    /// somewhere (`anchor` is its namespace node) and the rest of the
+    /// path missed, the note spells out the shadowing the way protoc
+    /// does and points at the leading-dot escape hatch.
+    fn unresolved(
+        &self,
+        p: &PendingRef<'s>,
+        segs: &[crate::cst::Word<'a>],
+        anchor: Option<NsId>,
+    ) -> Error {
         let mut written = String::with_capacity(32);
         if p.path.leading_dot {
             written.push('.');
@@ -978,12 +1036,35 @@ impl<'s, 'a> Builder<'s, 'a> {
             }
             written.push_str(seg.text);
         }
-        Err(self
-            .error_in(
-                p.file,
-                format!("cannot resolve type `{written}`"),
-                p.path.span,
-            )
-            .note("every type reference must resolve within the input set or the well-known types"))
+        let err = self.error_in(
+            p.file,
+            format!("cannot resolve type `{written}`"),
+            p.path.span,
+        );
+        let Some(ns) = anchor else {
+            return err.note(
+                "every type reference must resolve within the input set or the well-known types",
+            );
+        };
+        // Anchored miss: rebuild the fully-qualified path the reference
+        // resolved to (error path; allocation is fine here).
+        let mut parts: Vec<&str> = Vec::new();
+        let mut at = ns;
+        while at != NS_ROOT {
+            let node = &self.sema.ns_nodes[at.index()];
+            parts.push(node.name);
+            at = node.parent;
+        }
+        parts.reverse();
+        let mut resolved = parts.join(".");
+        for seg in &segs[1..] {
+            resolved.push('.');
+            resolved.push_str(seg.text);
+        }
+        err.note(format!(
+            "`{written}` resolves to `{resolved}`, which is not defined; the innermost \
+             scope is searched first — use a leading dot (`.{written}`) to start from \
+             the outermost scope"
+        ))
     }
 }
