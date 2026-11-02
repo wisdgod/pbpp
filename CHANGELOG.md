@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-02
+
+### Changed
+
+- Maintenance release; no change to parsing, formatting, selection, or
+  pruning output. Code adopts std APIs available within the 1.88 MSRV
+  (`File::create_new` for the temp file and output-directory lock,
+  `first_chunk` in the lexer's 8-byte loads) and builds clean under
+  clippy 1.99's `branches_sharing_code`. The tests now check file
+  presence with `std::fs::exists`, so an IO error fails the assertion
+  instead of reading as "absent".
+
 ## [0.1.1] - 2026-08-05
 
 ### Fixed
