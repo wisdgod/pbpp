@@ -582,7 +582,6 @@ impl<'a> Lexer<'a> {
                     blank_before: self.blank_before(start_line),
                 });
                 self.prev_end_line = start_line;
-                Ok(())
             }
             Some(b'*') => {
                 self.i += 2;
@@ -612,15 +611,14 @@ impl<'a> Lexer<'a> {
                     blank_before: self.blank_before(start_line),
                 });
                 self.prev_end_line = self.line;
-                Ok(())
             }
             _ => {
                 let s = self.i;
                 self.i += 1;
                 self.push_tok(TokKind::Slash, s, self.line);
-                Ok(())
             }
         }
+        Ok(())
     }
 
     fn string(&mut self) -> Result<(), Error> {

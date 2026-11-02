@@ -68,7 +68,7 @@ fn sync_writes_and_manifest_records_ownership() {
     let out = s.path("out");
     let report = fs::sync(&out, &[file("a/x.proto", "one"), file("b.proto", "two")]).unwrap();
     assert_eq!(report.written, vec!["a/x.proto", "b.proto"]);
-    assert!(report.removed.is_empty());
+    assert_eq!(report.removed, Vec::<String>::new());
     assert_eq!(
         std::fs::read_to_string(out.join("a/x.proto")).unwrap(),
         "one"
