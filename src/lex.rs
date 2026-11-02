@@ -371,7 +371,7 @@ const fn swar_ge7(x7: u64, n: u8) -> u64 {
 
 #[inline(always)]
 fn load8(b: &[u8], i: usize) -> u64 {
-    u64::from_le_bytes(b[i..i + 8].try_into().unwrap())
+    u64::from_le_bytes(*b[i..].first_chunk().unwrap())
 }
 
 /// Index of the first byte flagged in `mask` (little-endian = string order).

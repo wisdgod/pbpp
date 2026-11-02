@@ -54,7 +54,7 @@
 use crate::error::Error;
 use crate::prune::PrunedFile;
 use rustc_hash::FxHashSet;
-use std::fs::{File, OpenOptions};
+use std::fs::File;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
@@ -411,7 +411,7 @@ fn create_temp(dir: &Path) -> Result<(File, PathBuf), Error> {
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
         let name = format!(".pbtrim-tmp.{}.{nanos:x}.{n:x}", std::process::id());
         let tmp = dir.join(name);
-        match OpenOptions::new().write(true).create_new(true).open(&tmp) {
+        match File::create_new(&tmp) {
             Ok(file) => return Ok((file, tmp)),
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
                 last_err = Some(e);
@@ -453,7 +453,7 @@ struct DirLock {
 impl DirLock {
     fn acquire(out_root: &Path) -> Result<Self, Error> {
         let path = out_root.join(LOCK);
-        match OpenOptions::new().write(true).create_new(true).open(&path) {
+        match File::create_new(&path) {
             Ok(mut f) => {
                 let _ = writeln!(f, "{}", std::process::id());
                 Ok(Self { path })

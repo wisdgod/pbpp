@@ -178,7 +178,10 @@ fn prune_writes_kept_files_and_reports_dropped() {
     assert!(!app.contains("Gone"), "{app}");
     let lib = std::fs::read_to_string(s.path("out/lib.proto")).unwrap();
     assert!(lib.contains("message T"), "{lib}");
-    assert!(!s.path("out/dead.proto").exists(), "dropped file written");
+    assert!(
+        !std::fs::exists(s.path("out/dead.proto")).unwrap(),
+        "dropped file written"
+    );
 }
 
 #[test]
@@ -211,7 +214,7 @@ fn prune_out_dir_is_synced_via_manifest() {
         &s.path("out"),
     ]);
     assert_eq!(code(&out), 0, "stderr: {}", stderr(&out));
-    assert!(s.path("out/dead.proto").exists());
+    assert!(std::fs::exists(s.path("out/dead.proto")).unwrap());
 
     // Second run drops dead.D: the owned leftover goes, foreign files stay.
     let rules_app = s.write("rules-app.txt", "+ app.M\n");
@@ -227,12 +230,15 @@ fn prune_out_dir_is_synced_via_manifest() {
     assert_eq!(code(&out), 0, "stderr: {}", stderr(&out));
     assert!(stdout(&out).contains("removed stale"), "{}", stdout(&out));
     assert!(
-        !s.path("out/dead.proto").exists(),
+        !std::fs::exists(s.path("out/dead.proto")).unwrap(),
         "owned stale not removed"
     );
-    assert!(s.path("out/foreign.proto").exists(), "foreign file removed");
-    assert!(s.path("out/notes.txt").exists());
-    assert!(s.path("out/app.proto").exists());
+    assert!(
+        std::fs::exists(s.path("out/foreign.proto")).unwrap(),
+        "foreign file removed"
+    );
+    assert!(std::fs::exists(s.path("out/notes.txt")).unwrap());
+    assert!(std::fs::exists(s.path("out/app.proto")).unwrap());
 }
 
 #[test]

@@ -9,7 +9,7 @@
 #[test]
 fn buildrs_fixture_compiles_and_runs() {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/buildrs-consumer");
-    if !dir.exists() {
+    if !std::fs::exists(&dir).unwrap() {
         // fixtures/ is excluded from the published package; running the
         // suite from a crates.io tarball must not fail on it.
         eprintln!("fixture not present (packaged source); skipping");

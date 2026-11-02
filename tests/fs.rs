@@ -82,10 +82,13 @@ fn sync_writes_and_manifest_records_ownership() {
     std::fs::write(out.join("foreign.proto"), "not ours").unwrap();
     let report = fs::sync(&out, &[file("a/x.proto", "one")]).unwrap();
     assert_eq!(report.removed, vec!["b.proto"]);
-    assert!(!out.join("b.proto").exists());
-    assert!(out.join("foreign.proto").exists(), "foreign file removed");
+    assert!(!std::fs::exists(out.join("b.proto")).unwrap());
+    assert!(
+        std::fs::exists(out.join("foreign.proto")).unwrap(),
+        "foreign file removed"
+    );
     // The lock file is released after each sync.
-    assert!(!out.join(pbpp::fs::LOCK).exists());
+    assert!(!std::fs::exists(out.join(pbpp::fs::LOCK)).unwrap());
 }
 
 #[test]
@@ -131,7 +134,7 @@ fn sync_lock_blocks_concurrent_writer() {
     let err = fs::sync(&out, &[file("a.proto", "x")]).unwrap_err();
     assert!(err.message().contains("locked"), "{}", err.message());
     // The pre-existing lock is left in place (not ours to remove).
-    assert!(canon.join(pbpp::fs::LOCK).exists());
+    assert!(std::fs::exists(canon.join(pbpp::fs::LOCK)).unwrap());
 }
 
 #[test]

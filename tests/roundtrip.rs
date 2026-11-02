@@ -48,7 +48,7 @@ fn diff_context(name: &str, a: &str, b: &str) -> String {
 #[test]
 fn corpus_roundtrip() {
     for path in corpus_files() {
-        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        let name = path.file_name().unwrap().display().to_string();
         let src = std::fs::read_to_string(&path).unwrap();
 
         let first = pbpp::parse(&src)
@@ -88,7 +88,7 @@ fn comment_count_is_preserved() {
     // No comment may be dropped by parse+format: count `//` and `/*` markers
     // in source and in formatted output.
     for path in corpus_files() {
-        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        let name = path.file_name().unwrap().display().to_string();
         let src = std::fs::read_to_string(&path).unwrap();
         let file = pbpp::parse(&src).unwrap();
         let formatted = pbpp::format(&file);
